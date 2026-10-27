@@ -43,3 +43,46 @@ def test_hotel_api_creates_and_lists_hotel(tmp_path):
 
     app.dependency_overrides.clear()
     engine.dispose()
+
+
+def test_get_hotel_by_id(tmp_path):
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'hotel_manager.db'}")
+    testing_session_local = sessionmaker(
+        bind=engine,
+        autocommit=False,
+        autoflush=False
+    )
+    Base.metadata.create_all(engine)
+
+    def override_get_db():
+        db = testing_session_local()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    with TestClient(app) as client:
+        create_response = client.post(
+            "/hotels",
+            json={
+                "name": "Comfy Suites by Morehouse",
+                "address": "830 Westview Drive SW",
+                "city": "Atlanta",
+                "country": "USA",
+            },
+        )
+
+        assert create_response.status_code == 201
+
+        hotel_id = create_response.json()["id"]
+
+        response = client.get(f"/hotels/{hotel_id}")
+
+        assert response.status_code == 200
+        assert response.json()["name"] == "Comfy Suites by Morehouse"
+        assert response.json()["city"] == "Atlanta"
+
+    app.dependency_overrides.clear()
+    engine.dispose()
